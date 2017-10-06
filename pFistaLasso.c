@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
   
   const int MAX_ITER      = 50; // number of iteration
   const double TOL        = 1e-4; // tolerence
-  const double lambda_tol = 1e-4; // tolerence for update lambda
+//  const double lambda_tol = 1e-4; // tolerence for update lambda
   int rank; // process ID
   int size; // number of processes
 
@@ -50,7 +50,8 @@ int main(int argc, char **argv) {
   /* Read in local data */
   FILE *f, *test;
   int m, n, row, col;
-  double entry, startTime, endTime, commStartTime, commEndTime, commTime;
+  double entry;
+  double startTime, endTime, commStartTime, commEndTime, commTime;
   char s[100];
 
   /* -------------------------------------------------------
@@ -190,12 +191,9 @@ int main(int argc, char **argv) {
 //
   delta = 1.00/(err1*err1);
 
-  if (rank == 0) {
-    sprintf(s, "Results/test%d.m", size);
+    sprintf(s, "Results/test%d.m", rank + 1);
     test = fopen(s, "w");
-    fprintf(test,"res = [ \n");
-  }
-  
+
   int iter = 0;
 
   /* Main FISTA solver loop */
@@ -205,11 +203,8 @@ int main(int argc, char **argv) {
 
     t1 = t2;
     gsl_matrix_memcpy(xold, x); // copy x to old x;
-    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
+    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1, A, u, 0, z); // A_i x_i = A_i * x_i
 
-    commStartTime = MPI_Wtime();
-    MPI_Allreduce(Ax->data, z->data,  m, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD); // z = A*x
-    commEndTime = MPI_Wtime();
     commTime = commEndTime - commStartTime; // calculate the communication time
     gsl_matrix_sub(z, b);
     gsl_blas_dgemm(CblasTrans, CblasNoTrans, 1, A, z, 0, w); // w = A' (Ax - b)
@@ -223,19 +218,13 @@ int main(int argc, char **argv) {
     gsl_matrix_sub(xold, x);
 
     /* termination check */
-    if (rank == 0) {
       endTime = MPI_Wtime();
       double obj[x->size2];
       objective(x, lambda, z, &obj);
       for(int i = 0; i < x->size2; i++)
       {
-//      printf("%3d %e %10.4f %e \n", iter,
-//	     recv[0],  objective(x, lambda, z), lambda);
-       fprintf(test, "%e;\n", recv[0], obj[i]);
-//       fprintf(test, "%e %e %e %e;\n", recv[0], obj[i],
-//	      endTime - startTime, commTime);
+       fprintf(test, "%e;\n", obj[i]);
       }
-     }
     
     if(recv[0] < TOL){
       break;
@@ -245,19 +234,15 @@ int main(int argc, char **argv) {
   }
   
   /* Have the master write out the results to disk */
-  if (rank == 0) {
-    fprintf(test,"] \n");
-    fprintf(test,"totalTime = sum(res(:,3)) \n");
-    fprintf(test,"commTime = sum(res(:,4)) \n");
     fclose(test);
-    f = fopen("Results/solution.dat", "w");
+    sprintf(s, "Results/solution%d.dat",rank + 1);
+    f = fopen(s, "w");
 //    fprintf(f,"x = [ \n");
     gsl_matrix_fprintf(f, x, "%lf");
 //    fprintf(f,"] \n");
     fclose(f);
  
     printf("Elapsed time is: %lf \n", endTime - startTime);
-  }
   
   MPI_Finalize(); /* Shut down the MPI execution environment */
   
