@@ -11,14 +11,14 @@ LDFLAGS=-L/usr/lib -lgsl -lgslcblas -lm
 
 all: pFistaLasso
 
-pFistaLasso: pFistaLasso.o mmio.o
-	$(MPICC) $(CFLAGS) pFistaLasso.o mmio.o -o pFistaLasso $(LDFLAGS)
+pFistaLasso: pFistaLasso_wen.o mmio.o
+	$(MPICC) $(CFLAGS) pFistaLasso_wen.o mmio.o -o pFistaLasso $(LDFLAGS)
 
 # gam: gam.o mmio.o
 #	$(MPICC) $(CFLAGS) $(LDFLAGS) gam.o mmio.o -o gam
 
-pFistaLasso.o: pFistaLasso.c mmio.o
-	$(MPICC) $(CFLAGS)  -c pFistaLasso.c
+pFistaLasso_wen.o: pFistaLasso_wen.c mmio.o
+	$(MPICC) $(CFLAGS)  -c pFistaLasso_wen.c
 
 # gam.o: gam.c mmio.o
 #	$(MPICC) $(CFLAGS) -c gam.c
