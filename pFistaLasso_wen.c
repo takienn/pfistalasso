@@ -321,4 +321,5 @@ void shrink(gsl_matrix *m, gsl_vector *G, double sigma) {
       }
     }
   }
+  gsl_vector_free(gamma);
 }
