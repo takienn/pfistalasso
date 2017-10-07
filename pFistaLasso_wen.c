@@ -231,6 +231,8 @@ int main(int argc, char **argv) {
     // FISTA 
     t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
     gsl_matrix_sub(xold, x);
+    gsl_matrix_scale(xold, (t1-1)/t2);
+    gsl_matrix_add(x, xold);
 
     /* termination check */
       endTime = MPI_Wtime();
