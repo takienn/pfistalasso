@@ -82,6 +82,8 @@ int main(int argc, char **argv) {
 
   /* Read b */
   sprintf(s, "%s/%s/b.dat", dataCenterDir, big_dir);
+  printf("reading %s\n", s);
+
   f = fopen(s, "r");
   if (f == NULL) {
     printf("[%d] ERROR: %s does not exist, exiting.\n", rank, s);
@@ -99,6 +101,7 @@ int main(int argc, char **argv) {
   
   /* Read Gamma */
   sprintf(s, "%s/%s/Gamma.dat", dataCenterDir, big_dir);
+  printf("reading %s\n", s);
   f = fopen(s, "r");
   if (f == NULL) {
     printf("[%d] ERROR: %s does not exist, exiting.\n", rank, s);
@@ -112,24 +115,6 @@ int main(int argc, char **argv) {
   }
   fclose(f);
 
-  /* Read xs */
-  sprintf(s, "%s/%s/xs%d.dat", dataCenterDir, big_dir, rank + 1);
-  printf("[%d] reading %s\n", rank, s);
-  f = fopen(s, "r");
-  if (f == NULL) {
-    printf("[%d] ERROR: %s does not exist, exiting.\n", rank, s);
-    exit(EXIT_FAILURE);
-  }
-  mm_read_mtx_array_size(f, &m, &n);
-  gsl_vector *xs = gsl_matrix_calloc(m, n);
-  for (int i = 0; i < m*n; i++) {
-    row = i % m;
-    col = floor(i/m);
-    fscanf(f, "%lf", &entry);
-    gsl_matrix_set(xs, row, col, entry);
-  }
-  fclose(f);
-  // [m, n] = size(A);
   m = A->size1;
   n = A->size2;
   int bm = b->size1;
@@ -149,15 +134,7 @@ int main(int argc, char **argv) {
   gsl_matrix *Ax     = gsl_matrix_calloc(m, bn);
   gsl_vector *ax     = gsl_vector_calloc(m);
   gsl_vector *xdiff  = gsl_vector_calloc(n);
-  double send[1]; // an array used to aggregate 3 scalars at once
-  double recv[1]; // used to receive the results of these aggregations
   double err;
-//  double xs_local_nrm[1], xs_nrm[1]; // calculate the two norm of xs
-//  gsl_vector_view vec = gsl_matrix_row (xs, 1);
-//  xs_local_nrm[0] = gsl_blas_dnrm2(&vec.vector);
-//  xs_local_nrm[0] = xs_local_nrm[0]* xs_local_nrm[0];
-//  MPI_Allreduce(xs_local_nrm, xs_nrm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-//  xs_nrm[0] = sqrt(xs_nrm[0]);
 
   // FISTA parameters
   double delta, t1=1, t2=1;
@@ -241,10 +218,6 @@ int main(int argc, char **argv) {
       {
        fprintf(test, "%e;\n", obj[i]);
       }
-    
-//    if(recv[0] < TOL){
-//      break;
-//    }
 
     iter++;
   }
