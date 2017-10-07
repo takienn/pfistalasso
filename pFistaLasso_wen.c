@@ -211,10 +211,10 @@ int main(int argc, char **argv) {
 
   int iter = 0;
 
+  startTime = MPI_Wtime();
+
   /* Main FISTA solver loop */
   while (iter < MAX_ITER) {
-
-    startTime = MPI_Wtime();
 
     t1 = t2;
     gsl_matrix_memcpy(xold, x); // copy x to old x;
@@ -231,11 +231,10 @@ int main(int argc, char **argv) {
     // FISTA 
     t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
     gsl_matrix_sub(xold, x);
-    gsl_matrix_scale(xold, (t1-1)/t2);
+    gsl_matrix_scale(xold, (1-t1)/t2);
     gsl_matrix_add(x, xold);
 
     /* termination check */
-      endTime = MPI_Wtime();
       double obj[x->size2];
       objective(x, lambda, z, &obj);
       for(int i = 0; i < x->size2; i++)
@@ -243,20 +242,19 @@ int main(int argc, char **argv) {
        fprintf(test, "%e;\n", obj[i]);
       }
     
-    if(recv[0] < TOL){
-      break;
-    }
+//    if(recv[0] < TOL){
+//      break;
+//    }
 
     iter++;
   }
-  
+  endTime = MPI_Wtime();
+
   /* Have the master write out the results to disk */
     fclose(test);
     sprintf(s, "Results/solution%d.dat",rank + 1);
     f = fopen(s, "w");
-//    fprintf(f,"x = [ \n");
     gsl_matrix_fprintf(f, x, "%lf");
-//    fprintf(f,"] \n");
     fclose(f);
  
     printf("Elapsed time is: %lf \n", endTime - startTime);
