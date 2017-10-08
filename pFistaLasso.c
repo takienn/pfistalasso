@@ -271,10 +271,14 @@ void shrink(gsl_vector *x, gsl_vector *G, double sigma) {
 
   for (int i = 0; i < x->size; i++) {
     Gi = gsl_vector_get(gamma, i);
-      entry = gsl_vector_get(x, i);
-      if (entry < Gi && entry > -Gi) {
-	gsl_vector_set(x, i, 0);
-      }
+    entry = gsl_vector_get(x, i);
+    if (entry < - Gi) {
+      gsl_vector_set(x, i, entry + Gi);
+    }
+    else if (entry > Gi)
+    {
+      gsl_vector_set(x, i, entry - Gi);
+    }
   }
   gsl_vector_free(gamma);
 }
