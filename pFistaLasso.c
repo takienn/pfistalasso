@@ -40,7 +40,6 @@ int main(int argc, char **argv) {
   MPI_Comm_size(MPI_COMM_WORLD, &size); // total number of processes
 
 
-  char* dataCenterDir = "./";
   char* big_dir; // directory of data
   if(argc==2)
     big_dir = argv[1];
@@ -62,7 +61,7 @@ int main(int argc, char **argv) {
    * -------------------------------------------------------*/
 
   /* Read A */
-  sprintf(s, "%s/%s/A.dat",dataCenterDir,big_dir);
+  sprintf(s, "%s/A.dat",big_dir);
   printf("[%d] reading %s\n", rank, s);  
   f = fopen(s, "r");
   if (f == NULL) {
@@ -80,7 +79,7 @@ int main(int argc, char **argv) {
   fclose(f);
 
   /* Read b */
-  sprintf(s, "%s/%s/b.dat", dataCenterDir, big_dir);
+  sprintf(s, "%s/b.dat", big_dir);
   f = fopen(s, "r");
   if (f == NULL) {
     printf("[%d] ERROR: %s does not exist, exiting.\n", rank, s);
@@ -96,7 +95,7 @@ int main(int argc, char **argv) {
   fclose(f);
   
   /* Read Gamma */
-  sprintf(s, "%s/%s/Gamma.dat", dataCenterDir, big_dir);
+  sprintf(s, "%s/Gamma.dat", big_dir);
   printf("reading %s\n", s);
   f = fopen(s, "r");
   if (f == NULL) {
@@ -162,8 +161,11 @@ int main(int argc, char **argv) {
 
   gsl_vector *bi = gsl_vector_calloc(b->size1);
 
-  printf("B(MxN) = %dx%d\n", b->size1, b->size2);
-  printf("Processing job %d\n", rank);
+  if(rank == 0)
+  {
+    printf("b size = %dx%d\n", b->size1, b->size2);
+  }
+
 
   startTime = MPI_Wtime();
 
