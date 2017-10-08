@@ -9,10 +9,13 @@ CC=gcc
 CFLAGS=-Wall -ggdb -O0 -g3 -std=c99 -I/usr/include
 LDFLAGS=-L/usr/lib -lgsl -lgslcblas -lm
 
-all: pFistaLasso
+all: pFistaLasso pFistaLasso_wen
 
-pFistaLasso: pFistaLasso_wen.o mmio.o
-	$(MPICC) $(CFLAGS) pFistaLasso_wen.o mmio.o -o pFistaLasso $(LDFLAGS)
+pFistaLasso_wen: pFistaLasso_wen.o mmio.o
+	$(MPICC) $(CFLAGS) pFistaLasso_wen.o mmio.o -o pFistaLasso_wen $(LDFLAGS)
+
+pFistaLasso: pFistaLasso.o mmio.o
+	$(MPICC) $(CFLAGS) pFistaLasso.o mmio.o -o pFistaLasso $(LDFLAGS)
 
 # gam: gam.o mmio.o
 #	$(MPICC) $(CFLAGS) $(LDFLAGS) gam.o mmio.o -o gam
@@ -27,7 +30,7 @@ mmio.o: mmio.c
 	$(CC) $(CFLAGS) -c mmio.c
 
 clean:
-	rm -vf *.o pFistaLasso
+	rm -vf *.o pFistaLasso pFistaLasso_wen
 run:
 	mpiexec -n 1 ./pFistaLasso big1
 
