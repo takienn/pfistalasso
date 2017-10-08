@@ -183,8 +183,11 @@ int main(int argc, char **argv) {
 //
   delta = 1.00/(err1*err1);
 
-    sprintf(s, "Results/test%d.m", rank + 1);
-    test = fopen(s, "w");
+  if(rank == 0)
+  	printf("delta = %lf\n", delta);
+  
+  sprintf(s, "Results/test%d.m", rank + 1);
+  test = fopen(s, "w");
 
   int iter = 0;
 
