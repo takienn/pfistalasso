@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
    * -------------------------------------------------------*/
 
   /* Read A */
-  sprintf(s, "%s/%s/A%d.dat",dataCenterDir,big_dir, rank + 1);
+  sprintf(s, "%s/%s/A.dat",dataCenterDir,big_dir);
   printf("[%d] reading %s\n", rank, s);  
   f = fopen(s, "r");
   if (f == NULL) {
