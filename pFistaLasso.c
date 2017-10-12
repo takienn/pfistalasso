@@ -18,14 +18,63 @@
 #include <stdlib.h>
 #include <math.h>
 #include "mmio.h"
-#include <mpi.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
+#include <omp.h>
 
 void shrink(gsl_vector *x, gsl_vector *gamma, double sigma);
 double objective(gsl_vector *x, double lambda, gsl_vector *z);
+double err(gsl_matrix *A)
+{
+	  double m = A->size1;
+	  double n = A->size2;
+	  // These are all variables related to FISTA
+	  gsl_vector *x      = gsl_vector_calloc(n);
+	  gsl_vector *u      = gsl_vector_calloc(n);
+	  gsl_vector *xold   = gsl_vector_calloc(n);
+	  gsl_vector *w      = gsl_vector_calloc(n);
+	  gsl_vector *Ax     = gsl_vector_calloc(m);
+	  double err;
+
+	  // approximate ||A||_2 by power method
+	  double sum_x = 0, err0=0, err1;
+	  double tol= 1e-6, normx, normy;
+	  int cnt=0;
+	  // calcuate x = sum(abs(A), 1)';
+	//  startTime = MPI_Wtime();
+	   for(int j=0;j<n;j++){
+	    gsl_matrix_get_col(Ax, A, j);
+	    sum_x = gsl_blas_dasum(Ax);
+	    gsl_vector_set(x, j, sum_x);
+	  }
+	  err1 = gsl_blas_dnrm2(x);
+	  gsl_vector_scale(x, 1.0/err1);
+	  while(fabs(err1 - err0) > tol * err1){
+	    err0 = err1;
+	    gsl_blas_dgemv(CblasNoTrans, 1, A, x, 0, Ax); // Ax = A*x
+	    gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, x);
+	    normx = gsl_blas_dnrm2(x);
+	    normy = gsl_blas_dnrm2(Ax);
+
+	    err1 = normx/normy;
+	    gsl_vector_scale(x, 1.0/normx);
+	    cnt = cnt+1;
+	    if(cnt > 100){
+	      break;
+	    }
+	  }
+	//  endTime = MPI_Wtime();
+	//  printf("spertral norm evaluation time: %e \n", endTime - startTime);
+
+	  gsl_vector_free(x);
+	  gsl_vector_free(w);
+	  gsl_vector_free(Ax);
+	  gsl_vector_free(xold);
+	  gsl_vector_free(u);
+	  return err1;
+}
 
 int main(int argc, char **argv) {
   
@@ -35,16 +84,25 @@ int main(int argc, char **argv) {
   int rank; // process ID
   int size; // number of processes
 
-  MPI_Init(&argc, &argv); // initialize MPI environment
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank); // determine current running process
-  MPI_Comm_size(MPI_COMM_WORLD, &size); // total number of processes
+//  MPI_Init(&argc, &argv); // initialize MPI environment
+//  MPI_Comm_rank(MPI_COMM_WORLD, &rank); // determine current running process
+//  MPI_Comm_size(MPI_COMM_WORLD, &size); // total number of processes
 
 
-  char* big_dir; // directory of data
+  char* dir; // directory of data
+  uint32_t nthreads = 1;
   if(argc==2)
-    big_dir = argv[1];
+    {
+	  dir = argv[1];
+	  printf("Using default 1 processing thread\n");
+    }
+  else if(argc == 3)
+  	{
+	  dir = argv[1];
+	  nthreads = (uint32_t)atoi(argv[2]);
+    }
   else
-    big_dir = "big1";
+    perror("Please provide data directory");
 
   /* Read in local data */
   FILE *f, *test;
@@ -61,7 +119,7 @@ int main(int argc, char **argv) {
    * -------------------------------------------------------*/
 
   /* Read A */
-  sprintf(s, "%s/A.dat",big_dir);
+  sprintf(s, "%s/A.dat",dir);
   printf("[%d] reading %s\n", rank, s);  
   f = fopen(s, "r");
   if (f == NULL) {
@@ -79,7 +137,8 @@ int main(int argc, char **argv) {
   fclose(f);
 
   /* Read b */
-  sprintf(s, "%s/b.dat", big_dir);
+  sprintf(s, "%s/b.dat", dir);
+  printf("[%d] reading %s\n", rank, s);
   f = fopen(s, "r");
   if (f == NULL) {
     printf("[%d] ERROR: %s does not exist, exiting.\n", rank, s);
@@ -95,8 +154,8 @@ int main(int argc, char **argv) {
   fclose(f);
   
   /* Read Gamma */
-  sprintf(s, "%s/Gamma.dat", big_dir);
-  printf("reading %s\n", s);
+  sprintf(s, "%s/Gamma.dat", dir);
+  printf("[%d] reading %s\n", rank, s);
   f = fopen(s, "r");
   if (f == NULL) {
     printf("[%d] ERROR: %s does not exist, exiting.\n", rank, s);
@@ -113,78 +172,33 @@ int main(int argc, char **argv) {
   // [m, n] = size(A);
   m = A->size1;
   n = A->size2;
-  MPI_Barrier(MPI_COMM_WORLD);
- 
-  // These are all variables related to FISTA
-  gsl_vector *x      = gsl_vector_calloc(n);
-  gsl_vector *u      = gsl_vector_calloc(n);
-  gsl_vector *xold   = gsl_vector_calloc(n);
-  gsl_vector *w      = gsl_vector_calloc(n);
-  gsl_vector *Ax     = gsl_vector_calloc(m);
-  double err;
 
-  // FISTA parameters
   double delta, t1=1, t2=1;
   double lambda = 0.01;
 
-  // approximate ||A||_2 by power method
-  double sum_x = 0, err0=0, err1;
-  double tol= 1e-6, normx, normy;
-  int cnt=0;
-  // calcuate x = sum(abs(A), 1)';
-  startTime = MPI_Wtime();
-   for(int j=0;j<n;j++){
-    gsl_matrix_get_col(Ax, A, j);
-    sum_x = gsl_blas_dasum(Ax);
-    gsl_vector_set(x, j, sum_x);
-  }
-  err1 = gsl_blas_dnrm2(x);
-  gsl_vector_scale(x, 1.0/err1);
-  while(fabs(err1 - err0) > tol * err1){
-    err0 = err1;
-    gsl_blas_dgemv(CblasNoTrans, 1, A, x, 0, Ax); // Ax = A*x
-    gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, x);
-    normx = gsl_blas_dnrm2(x);
-    normy = gsl_blas_dnrm2(Ax);
-  
-    err1 = normx/normy;
-    gsl_vector_scale(x, 1.0/normx);
-    cnt = cnt+1;
-    if(cnt > 100){
-      break;
-    }
-  }
-  endTime = MPI_Wtime();
-  printf("spertral norm evaluation time: %e \n", endTime - startTime);
-  
+  double err1 = err(A);
   delta = 1.00/(err1*err1);
 
-  gsl_vector *bi = gsl_vector_calloc(b->size1);
 
-  if(rank == 0)
-  {
-    printf("b size = %dx%d\n", b->size1, b->size2);
-  }
+  startTime = omp_get_wtime();
 
-
-  startTime = MPI_Wtime();
-
-  int END_COL, START_COL;
-  START_COL = rank * b->size2/size;
-  if(rank == size - 1)
-    END_COL = START_COL + b->size2/size + b->size2%size;
-  else
-    END_COL = START_COL + b->size2/size;
   sprintf(s, "Results/solution%d.dat",rank + 1);
   f = fopen(s, "w");
 
-  printf("Process %d works on b(%d:%d)\n", rank, START_COL, END_COL - 1);
+#pragma omp parallel for schedule(dynamic,3) num_threads(nthreads)
 
-  for(int col = START_COL; col < END_COL; ++col)
+  for(int col = 0; col < b->size1; ++col)
   {
     /*----------------------
      initialize variables
     ----------------------*/
+	gsl_vector *x      = gsl_vector_calloc(n);
+    gsl_vector *u      = gsl_vector_calloc(n);
+    gsl_vector *xold   = gsl_vector_calloc(n);
+    gsl_vector *w      = gsl_vector_calloc(n);
+    gsl_vector *Ax     = gsl_vector_calloc(m);
+    gsl_vector *bi 	   = gsl_vector_calloc(b->size1);
+
     gsl_vector_set_zero(x);
     gsl_vector_set_zero(u);
 
@@ -228,26 +242,28 @@ int main(int argc, char **argv) {
   
   /* Have the master write out the results to disk */
 
+  fprintf(f, "Column %d\n", col);
   gsl_vector_fprintf(f, x, "%lf");
 
+  gsl_vector_free(x);
+  gsl_vector_free(w);
+  gsl_vector_free(Ax);
+  gsl_vector_free(xold);
+  gsl_vector_free(u);
+  gsl_vector_free(bi);
 
   }
   fclose(f);
 
-  endTime = MPI_Wtime();
+  endTime = omp_get_wtime();
 
   printf("Elapsed time is: %lf \n", endTime - startTime);
-
-  MPI_Finalize(); /* Shut down the MPI execution environment */
   
   /* Clear memory */
   gsl_matrix_free(A);
   gsl_vector_free(G);
   gsl_matrix_free(b);
-  gsl_vector_free(bi);
-  gsl_vector_free(x);
-  gsl_vector_free(w);
-  gsl_vector_free(Ax);
+
   return 0;
 }
 
