@@ -93,6 +93,13 @@ int main(int argc, char **argv) {
 	  dir = argv[1];
 	  nthreads = (unsigned)atoi(argv[2]);
     }
+  else if(argc == 4)
+  	{
+	  dir = argv[1];
+	  nthreads = (unsigned)atoi(argv[2]);
+	  use_matio = (unsigned)atoi(argv[3]);
+    }
+
   else
     perror("Please provide data directory");
 
