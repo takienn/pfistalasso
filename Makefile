@@ -6,7 +6,7 @@
 # ARCH=i386
 MPICC=mpicc
 CC=gcc
-CFLAGS=-Wall -ggdb -O0 -g3 -std=c99 -fopenmp -I/usr/include -I/usr/include/openmpi
+CFLAGS=-Wall -ggdb -O0 -g3 -std=c99 -fopenmp -I/usr/include 
 LDFLAGS=-L/usr/lib -lgsl -lgslcblas -lm
 
 all: pFistaLasso pFistaLasso_wen
