@@ -13,7 +13,6 @@
  * Date:     01/11/2013
  * Modified: 02/06/2013
  *--------------------------------------------------------*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -22,8 +21,8 @@
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
-
 #include <omp.h>
+#include <matio.h>
 
 void shrink(gsl_vector *x, gsl_vector *G);
 double objective(gsl_vector *x, double lambda, gsl_vector *z);
@@ -81,13 +80,9 @@ int main(int argc, char **argv) {
 //  const double TOL        = 1e-4; // tolerence
 //  const double lambda_tol = 1e-4; // tolerence for update lambda
 
-//  MPI_Init(&argc, &argv); // initialize MPI environment
-//  MPI_Comm_rank(MPI_COMM_WORLD, &rank); // determine current running process
-//  MPI_Comm_size(MPI_COMM_WORLD, &size); // total number of processes
-
-
   char* dir; // directory of data
   unsigned int nthreads = 1;
+  unsigned int use_matio = 0;
   if(argc==2)
     {
 	  dir = argv[1];
@@ -108,10 +103,11 @@ int main(int argc, char **argv) {
   char s[100];
 
   /* -------------------------------------------------------
-   * Subsystem n will look for files called An.dat and bn.dat
-   * in the current directory; these are its local data and do 
-   * not need to be visible to any other processes. Note that
-   * m and n here refer to the dimensions of the 
+   * Subsystem n will look for files called A.dat and b.dat
+   * and Gamma.dat in the current directory; these are its
+   * local data and do not need to be visible to any other
+   * processes.
+   * Note that m and n here refer to the dimensions of the
    * local coefficient matrix.
    * -------------------------------------------------------*/
 
@@ -177,15 +173,16 @@ int main(int argc, char **argv) {
   delta = 1.00/(err1*err1);
 
 
+  // Scaling Gamma
   gsl_vector_scale(G, delta * lambda);
-  // Allocating solution matrix in memory
+
+  // Preallocating solution matrix in memory
   gsl_matrix *X = gsl_matrix_calloc(n, b->size2);
 
   printf("Running pFISTA for LASSO\n");
 
   startTime = omp_get_wtime();
-
-#pragma omp parallel for schedule(dynamic,3) num_threads(nthreads)
+#pragma omp parallel for schedule(static) num_threads(nthreads)
 
   for(int col = 0; col < b->size2; ++col)
   {
@@ -234,7 +231,7 @@ int main(int argc, char **argv) {
 
     gsl_matrix_set_col (X, col, x);
 
-    // Free local allocations
+    // Clear local memory allocations
     gsl_vector_free(x);
     gsl_vector_free(w);
     gsl_vector_free(Ax);
@@ -242,20 +239,31 @@ int main(int argc, char **argv) {
     gsl_vector_free(u);
   	gsl_vector_free(bi);
   }
-
   endTime = omp_get_wtime();
   printf("Elapsed time is: %lf \n", endTime - startTime);
 
 
-  sprintf(s, "Results/solution.dat");
-  f = fopen(s, "w");
-  printf("Writing solution matrix to: %s ", s);
-  startTime = omp_get_wtime();
-  gsl_matrix_fprintf(f, X, "%lf");
-  endTime = omp_get_wtime();
-  printf("in %lf seconds\n", endTime - startTime);
-
-  fclose(f);
+  if(use_matio)
+  {
+	  sprintf(s, "Results/solution.mat");
+	  printf("Writing solution matrix to: %s ", s);
+	  mat_t *matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
+	  size_t    dims[2] = {n, b->size2};
+	  matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
+	  Mat_VarWrite(matfp, solution, MAT_COMPRESSION_ZLIB);
+	  Mat_VarFree(solution);
+  }
+  else
+  {
+	  sprintf(s, "Results/solution.dat");
+	  printf("Writing solution matrix to: %s ", s);
+	  f = fopen(s, "w");
+	  startTime = omp_get_wtime();
+	  gsl_matrix_fprintf(f, X, "%lf");
+	  endTime = omp_get_wtime();
+	  printf("in %lf seconds\n", endTime - startTime);
+	  fclose(f);
+  }
 
   /* Clear memory */
   gsl_matrix_free(A);
