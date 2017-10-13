@@ -76,7 +76,7 @@ double err(gsl_matrix *A)
 
 int main(int argc, char **argv) {
   
-  const int MAX_ITER      = 50; // number of iteration
+  int MAX_ITER      = 50; // number of iteration
 //  const double TOL        = 1e-4; // tolerence
 //  const double lambda_tol = 1e-4; // tolerence for update lambda
 
@@ -99,6 +99,14 @@ int main(int argc, char **argv) {
 	  nthreads = (unsigned)atoi(argv[2]);
 	  use_matio = (unsigned)atoi(argv[3]);
     }
+  else if(argc ==5)
+  {
+	  dir = argv[1];
+	  nthreads = (unsigned)atoi(argv[2]);
+	  use_matio = (unsigned)atoi(argv[3]);
+	  MAX_ITER = (unsigned)atoi(argv[4]);
+
+  }
 
   else
     perror("Please provide data directory");
@@ -190,18 +198,17 @@ int main(int argc, char **argv) {
 
   startTime = omp_get_wtime();
 #pragma omp parallel for schedule(static) num_threads(nthreads)
-
   for(int col = 0; col < b->size2; ++col)
   {
     /*----------------------
      initialize local variables
     ----------------------*/
-	gsl_vector *x      = gsl_vector_calloc(n);
+    gsl_vector *x      = gsl_vector_calloc(n);
     gsl_vector *u      = gsl_vector_calloc(n);
     gsl_vector *xold   = gsl_vector_calloc(n);
     gsl_vector *w      = gsl_vector_calloc(n);
     gsl_vector *Ax     = gsl_vector_calloc(m);
-    gsl_vector *bi 	   = gsl_vector_calloc(b->size1);
+    gsl_vector *bi     = gsl_vector_calloc(b->size1);
 
     gsl_vector_set_zero(x);
     gsl_vector_set_zero(u);
@@ -244,8 +251,9 @@ int main(int argc, char **argv) {
     gsl_vector_free(Ax);
     gsl_vector_free(xold);
     gsl_vector_free(u);
-  	gsl_vector_free(bi);
+    gsl_vector_free(bi);
   }
+
   endTime = omp_get_wtime();
   printf("Elapsed time is: %lf \n", endTime - startTime);
 
@@ -254,11 +262,15 @@ int main(int argc, char **argv) {
   {
 	  sprintf(s, "Results/solution.mat");
 	  printf("Writing solution matrix to: %s ", s);
+	  startTime = omp_get_wtime();
 	  mat_t *matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
 	  size_t    dims[2] = {n, b->size2};
 	  matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
 	  Mat_VarWrite(matfp, solution, MAT_COMPRESSION_ZLIB);
 	  Mat_VarFree(solution);
+	  endTime = omp_get_wtime();
+	  printf("in %lf seconds\n", endTime - startTime);
+
   }
   else
   {
@@ -301,12 +313,11 @@ void shrink(gsl_vector *x, gsl_vector *G) {
   for (int i = 0; i < x->size; i++) {
     Gi = gsl_vector_get(G, i);
     entry = gsl_vector_get(x, i);
-    if (entry < - Gi) {
+    if (entry < - Gi)
       gsl_vector_set(x, i, entry + Gi);
-    }
     else if (entry > Gi)
-    {
       gsl_vector_set(x, i, entry - Gi);
-    }
+    else
+      gsl_vector_set(x, i, 0);
   }
 }
