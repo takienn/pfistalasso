@@ -193,12 +193,13 @@ int main(int argc, char **argv) {
 
   // Preallocating solution matrix in memory
   gsl_matrix *X = gsl_matrix_calloc(n, b->size2);
+  gsl_matrix_set_zero(X);
 
   printf("Running pFISTA for LASSO\n");
 
   startTime = omp_get_wtime();
 #pragma omp parallel for schedule(static) num_threads(nthreads)
-  for(int col = 0; col < b->size2; ++col)
+  for(int i = 0; i < b->size2; ++i)
   {
     /*----------------------
      initialize local variables
@@ -212,13 +213,16 @@ int main(int argc, char **argv) {
 
     gsl_vector_set_zero(x);
     gsl_vector_set_zero(u);
+    gsl_vector_set_zero(xold);
+    gsl_vector_set_zero(w);
+    gsl_vector_set_zero(Ax);
+    gsl_vector_set_zero(bi);
+
 
     int err = 0;
-
     int iter = 0;
 
-    gsl_matrix_get_col(bi, b, col);
-
+    gsl_matrix_get_col(bi, b, i);
     /* Main FISTA solver loop */
     while (iter < MAX_ITER)
     {
@@ -226,7 +230,7 @@ int main(int argc, char **argv) {
 		gsl_vector_memcpy(xold, x); // copy x to old x;
 		gsl_blas_dgemv(CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
 
-		gsl_vector_sub(Ax, bi);
+		gsl_vector_sub(Ax, bi); // Ax-b
 		gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, w); // w = A' (Ax - b)
 		gsl_vector_scale(w, delta);  // w = delta * w
 		gsl_vector_sub(u, w);  // u = x - delta * A'(Ax - b)
@@ -243,7 +247,7 @@ int main(int argc, char **argv) {
 		iter++;
    }
 
-    gsl_matrix_set_col (X, col, x);
+    gsl_matrix_set_col (X, i, x);
 
     // Clear local memory allocations
     gsl_vector_free(x);
