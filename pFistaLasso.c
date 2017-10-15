@@ -24,7 +24,7 @@
 #include <omp.h>
 #include <matio.h>
 
-void shrink(gsl_vector *x, gsl_vector *G);
+void shrink(gsl_matrix *x, gsl_vector *G);
 double objective(gsl_vector *x, double lambda, gsl_vector *z);
 double err(gsl_matrix *A)
 {
@@ -193,65 +193,65 @@ int main(int argc, char **argv) {
   printf("Running pFISTA for LASSO\n");
 
   startTime = omp_get_wtime();
-#pragma omp parallel for schedule(static) num_threads(nthreads)
-  for(int i = 0; i < b->size2; ++i)
-  {
+//#pragma omp parallel for schedule(static) num_threads(nthreads)
+//  for(int i = 0; i < b->size2; ++i)
+//  {
     /*----------------------
      initialize local variables
     ----------------------*/
-    gsl_vector *x      = gsl_vector_calloc(n);
-    gsl_vector *u      = gsl_vector_calloc(n);
-    gsl_vector *xold   = gsl_vector_calloc(n);
-    gsl_vector *w      = gsl_vector_calloc(n);
-    gsl_vector *Ax     = gsl_vector_calloc(m);
-    gsl_vector *bi     = gsl_vector_calloc(b->size1);
+//    gsl_vector *x      = gsl_vector_calloc(n);
+  gsl_matrix *u      = gsl_matrix_calloc(A->size2, b->size2);
+    gsl_matrix *xold   = gsl_matrix_calloc(A->size2, b->size2);
+    gsl_matrix *w      = gsl_matrix_calloc(A->size2, b->size2);
+    gsl_matrix *Ax     = gsl_matrix_calloc(b->size1, b->size2);
+//    gsl_vector *bi     = gsl_vector_calloc(b->size1);
 
-    gsl_vector_set_zero(x);
-    gsl_vector_set_zero(u);
-    gsl_vector_set_zero(xold);
-    gsl_vector_set_zero(w);
-    gsl_vector_set_zero(Ax);
-    gsl_vector_set_zero(bi);
+//    gsl_vector_set_zero(x);
+    gsl_matrix_set_zero(u);
+    gsl_matrix_set_zero(xold);
+    gsl_matrix_set_zero(w);
+    gsl_matrix_set_zero(Ax);
+//    gsl_vector_set_zero(bi);
 
 
     int err = 0;
     int iter = 0;
 
-    gsl_matrix_get_col(bi, b, i);
+//    gsl_matrix_get_col(bi, b, i);
     /* Main FISTA solver loop */
     while (iter < MAX_ITER)
     {
       t1 = t2;
-      gsl_vector_memcpy(xold, x); // copy x to old x;
-      gsl_blas_dgemv(CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
+      gsl_matrix_memcpy(xold, X); // copy x to old x;
+      gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
 
-      gsl_vector_sub(Ax, bi); // Ax-b
-      gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, w); // w = A' (Ax - b)
-      gsl_vector_scale(w, delta);  // w = delta * w
-      gsl_vector_sub(u, w);  // u = x - delta * A'(Ax - b)
-      gsl_vector_memcpy(x, u);
-      shrink(x, G); // shrink(x, alpha*lambda)
+      gsl_matrix_sub(Ax, b); // Ax-b
+      gsl_blas_dgemm(CblasTrans, CblasNoTrans,  1, A, Ax, 0, w); // w = A' (Ax - b)
+      gsl_matrix_scale(w, delta);  // w = delta * w
+      gsl_matrix_sub(u, w);  // u = x - delta * A'(Ax - b)
+      gsl_matrix_memcpy(X, u);
+      shrink(X, G); // shrink(x, alpha*lambda)
 
       // FISTA
       t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
-      gsl_vector_sub(xold, x);
-      gsl_vector_scale(xold, (1 - t1)/t2);
-      gsl_vector_memcpy(u, x);
-      gsl_vector_add(u, xold);
+      gsl_matrix_sub(xold, X);
+      gsl_matrix_scale(xold, (1 - t1)/t2);
+      gsl_matrix_memcpy(u, X);
+      gsl_matrix_add(u, xold);
 
       iter++;
    }
 
-    gsl_matrix_set_col (X,i,x);
+//    gsl_matrix_set_col (X,i,x);
 
     // Clear local memory allocations
-    gsl_vector_free(x);
-    gsl_vector_free(w);
-    gsl_vector_free(Ax);
-    gsl_vector_free(xold);
-    gsl_vector_free(u);
-    gsl_vector_free(bi);
-  }
+//    gsl_vector_free(x);
+    gsl_matrix_set_zero(w);
+    gsl_matrix_free(Ax);
+    gsl_matrix_set_zero(xold);
+    gsl_matrix_set_zero(u);
+//    gsl_vector_free(bi);
+//  }
 
   endTime = omp_get_wtime();
   printf("Elapsed time is: %lf \n", endTime - startTime);
@@ -306,18 +306,20 @@ double objective(gsl_vector *x, double lambda, gsl_vector *z) {
 }
 
 /* shrinkage function */
-void shrink(gsl_vector *x, gsl_vector *G) {
+void shrink(gsl_matrix *x, gsl_vector *G) {
   double entry;
   double Gi;
-
-  for (int i = 0; i < x->size; i++) {
+  for(int j= 0; j < x->size2; j++)
+  {
+  for (int i = 0; i <x->size1; i++) {
     Gi = gsl_vector_get(G, i);
-    entry = gsl_vector_get(x, i);
+    entry = gsl_matrix_get(x, i, j);
     if (entry < - Gi)
-      gsl_vector_set(x, i, entry + Gi);
+      gsl_matrix_set(x, i, j, entry + Gi);
     else if (entry > Gi)
-      gsl_vector_set(x, i, entry - Gi);
+      gsl_matrix_set(x, i, j, entry - Gi);
     else
-      gsl_vector_set(x, i, 0);
+      gsl_matrix_set(x, i, j, 0);
+  }
   }
 }
