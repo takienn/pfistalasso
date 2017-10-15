@@ -126,56 +126,51 @@ int main(int argc, char **argv) {
    * local coefficient matrix.
    * -------------------------------------------------------*/
 
-  /* Read A */
-  sprintf(s, "%s/A.dat",dir);
-  printf("Reading %s\n", s);
-  f = fopen(s, "r");
-  if (f == NULL) {
-   printf("ERROR: %s does not exist, exiting.\n", s);
-   exit(EXIT_FAILURE);
-  }
-  mm_read_mtx_array_size(f, &m, &n);
-  gsl_matrix *A = gsl_matrix_calloc(m, n);
-  for (int i = 0; i < m*n; i++) {
-    row = i % m;
-    col = floor(i/m);
-    fscanf(f, "%lf", &entry);
-    gsl_matrix_set(A, row, col, entry);
-  }
-  fclose(f);
+  mat_t *matfp;
+  matvar_t *matvar;
+  gsl_matrix *A, *b;
+  gsl_vector *G;
 
-  /* Read b */
-  sprintf(s, "%s/b.dat", dir);
-  printf("Reading %s\n", s);
-  f = fopen(s, "r");
-  if (f == NULL) {
-    printf("ERROR: %s does not exist, exiting.\n", s);
-    exit(EXIT_FAILURE);
+  matfp = Mat_Open(dir, MAT_ACC_RDONLY);
+  if (NULL == matfp) {
+    fprintf(stderr, "Error opening MAT file \"%s\"!\n", dir);
+    return EXIT_FAILURE;
   }
-  mm_read_mtx_array_size(f, &m, &n);
-  gsl_matrix *b = gsl_matrix_calloc(m, n);
-  for (int i = 0; i < m*n; i++) {
-    row = i % m;
-    col = floor(i/m);
-    fscanf(f, "%lf", &entry);
-    gsl_matrix_set(b, row, col, entry);  }
-  fclose(f);
-  
-  /* Read Gamma */
-  sprintf(s, "%s/Gamma.dat", dir);
-  printf("Reading %s\n", s);
-  f = fopen(s, "r");
-  if (f == NULL) {
-	printf("ERROR: %s does not exist, exiting.\n", s);
-    exit(EXIT_FAILURE);
+  matvar = Mat_VarRead(matfp, "A");
+  if(NULL == matvar) {
+    fprintf(stderr, "Error reading variable");
+    return EXIT_FAILURE;
+  } else {
+    A = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
+    m = A->size1;
+    n = A->size2;
+    memcpy(A->data, matvar->data, m*n*matvar->data_size);
   }
-  mm_read_mtx_array_size(f, &m, &n);
-  gsl_vector *G = gsl_vector_calloc(m);
-  for (int i = 0; i < m; i++) {
-    fscanf(f, "%lf", &entry);
-    gsl_vector_set(G, i, entry);
+  Mat_VarFree(matvar);
+
+  matvar = Mat_VarRead(matfp, "b");
+  if(NULL == matvar) {
+    fprintf(stderr, "Error reading variable");
+    return EXIT_FAILURE;
+  } else {
+    b = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
+    m = b->size1;
+    n = b->size2;
+    memcpy(b->data, matvar->data, m*n*matvar->data_size);
   }
-  fclose(f);
+  Mat_VarFree(matvar);
+
+  matvar = Mat_VarRead(matfp, "G");
+  if(NULL == matvar) {
+    fprintf(stderr, "Error reading variable");
+    return EXIT_FAILURE;
+  } else {
+    G = gsl_vector_calloc(matvar->dims[0]);
+    m = G->size;
+    memcpy(G->data, matvar->data, m*matvar->data_size);
+  }
+  Mat_VarFree(matvar);
+  Mat_Close(matfp);
 
   // [m, n] = size(A);
   m = A->size1;
@@ -226,28 +221,28 @@ int main(int argc, char **argv) {
     /* Main FISTA solver loop */
     while (iter < MAX_ITER)
     {
-		t1 = t2;
-		gsl_vector_memcpy(xold, x); // copy x to old x;
-		gsl_blas_dgemv(CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
+      t1 = t2;
+      gsl_vector_memcpy(xold, x); // copy x to old x;
+      gsl_blas_dgemv(CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
 
-		gsl_vector_sub(Ax, bi); // Ax-b
-		gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, w); // w = A' (Ax - b)
-		gsl_vector_scale(w, delta);  // w = delta * w
-		gsl_vector_sub(u, w);  // u = x - delta * A'(Ax - b)
-		gsl_vector_memcpy(x, u);
-		shrink(x, G); // shrink(x, alpha*lambda)
+      gsl_vector_sub(Ax, bi); // Ax-b
+      gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, w); // w = A' (Ax - b)
+      gsl_vector_scale(w, delta);  // w = delta * w
+      gsl_vector_sub(u, w);  // u = x - delta * A'(Ax - b)
+      gsl_vector_memcpy(x, u);
+      shrink(x, G); // shrink(x, alpha*lambda)
 
-		// FISTA
-		t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
-		gsl_vector_sub(xold, x);
-		gsl_vector_scale(xold, (1 - t1)/t2);
-		gsl_vector_memcpy(u, x);
-		gsl_vector_add(u, xold);
+      // FISTA
+      t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
+      gsl_vector_sub(xold, x);
+      gsl_vector_scale(xold, (1 - t1)/t2);
+      gsl_vector_memcpy(u, x);
+      gsl_vector_add(u, xold);
 
-		iter++;
+      iter++;
    }
 
-    gsl_matrix_set_col (X, i, x);
+    gsl_matrix_set_col (X,i,x);
 
     // Clear local memory allocations
     gsl_vector_free(x);
@@ -264,28 +259,29 @@ int main(int argc, char **argv) {
 
   if(use_matio)
   {
-	  sprintf(s, "Results/solution.mat");
-	  printf("Writing solution matrix to: %s ", s);
-	  startTime = omp_get_wtime();
-	  mat_t *matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
-	  size_t    dims[2] = {n, b->size2};
-	  matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
-	  Mat_VarWrite(matfp, solution, MAT_COMPRESSION_ZLIB);
-	  Mat_VarFree(solution);
-	  endTime = omp_get_wtime();
-	  printf("in %lf seconds\n", endTime - startTime);
+    sprintf(s, "Results/solution.mat");
+    printf("Writing solution matrix to: %s ", s);
+    startTime = omp_get_wtime();
+    mat_t *matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
+    size_t    dims[2] = {X->size1, X->size2};
+    matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
+    Mat_VarWrite(matfp, solution, MAT_COMPRESSION_NONE);
+    Mat_VarFree(solution);
+    Mat_Close(matfp);
+    endTime = omp_get_wtime();
+    printf("in %lf seconds\n", endTime - startTime);
 
   }
   else
   {
-	  sprintf(s, "Results/solution.dat");
-	  printf("Writing solution matrix to: %s ", s);
-	  f = fopen(s, "w");
-	  startTime = omp_get_wtime();
-	  gsl_matrix_fprintf(f, X, "%lf");
-	  endTime = omp_get_wtime();
-	  printf("in %lf seconds\n", endTime - startTime);
-	  fclose(f);
+    sprintf(s, "Results/solution.dat");
+    printf("Writing solution matrix to: %s ", s);
+    f = fopen(s, "w");
+    startTime = omp_get_wtime();
+    gsl_matrix_fprintf(f, X, "%lf");
+    endTime = omp_get_wtime();
+    printf("in %lf seconds\n", endTime - startTime);
+    fclose(f);
   }
 
   /* Clear memory */
