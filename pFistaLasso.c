@@ -13,103 +13,33 @@
  * Date:     01/11/2013
  * Modified: 02/06/2013
  *--------------------------------------------------------*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include "mmio.h"
+#include <omp.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
-#include <omp.h>
 #include <matio.h>
 
-void shrink(gsl_vector *x, gsl_vector *G);
+void shrink(gsl_vector *x, gsl_vector *gamma, double sigma);
 double objective(gsl_vector *x, double lambda, gsl_vector *z);
-double err(gsl_matrix *A)
-{
-	  double m = A->size1;
-	  double n = A->size2;
-	  // These are all variables related to FISTA
-	  gsl_vector *x      = gsl_vector_calloc(n);
-	  gsl_vector *u      = gsl_vector_calloc(n);
-	  gsl_vector *xold   = gsl_vector_calloc(n);
-	  gsl_vector *w      = gsl_vector_calloc(n);
-	  gsl_vector *Ax     = gsl_vector_calloc(m);
-	  double err;
-
-	  // approximate ||A||_2 by power method
-	  double sum_x = 0, err0=0, err1;
-	  double tol= 1e-6, normx, normy;
-	  int cnt=0;
-	  // calcuate x = sum(abs(A), 1)';
-	//  startTime = MPI_Wtime();
-	   for(int j=0;j<n;j++){
-	    gsl_matrix_get_col(Ax, A, j);
-	    sum_x = gsl_blas_dasum(Ax);
-	    gsl_vector_set(x, j, sum_x);
-	  }
-	  err1 = gsl_blas_dnrm2(x);
-	  gsl_vector_scale(x, 1.0/err1);
-	  while(fabs(err1 - err0) > tol * err1){
-	    gsl_blas_dgemv(CblasNoTrans, 1, A, x, 0, Ax); // Ax = A*x
-	    gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, x);
-	    normx = gsl_blas_dnrm2(x);
-	    normy = gsl_blas_dnrm2(Ax);
-	    gsl_vector_scale(x, 1.0/normx);
-
-	    err0 = err1;
-	    err1 = normx/normy;
-	    cnt = cnt+1;
-	    if(cnt > 100){
-	      break;
-	    }
-	  }
-
-	  gsl_vector_free(x);
-	  gsl_vector_free(w);
-	  gsl_vector_free(Ax);
-	  gsl_vector_free(xold);
-	  gsl_vector_free(u);
-	  return err1;
-}
+double calcErr(gsl_matrix *A);
 
 int main(int argc, char **argv) {
   
-  int MAX_ITER      = 50; // number of iteration
+  const int MAX_ITER      = 50; // number of iteration
+  unsigned int nthreads = 8;
+
 //  const double TOL        = 1e-4; // tolerence
 //  const double lambda_tol = 1e-4; // tolerence for update lambda
 
   char* dir; // directory of data
-  unsigned int nthreads = 1;
-  unsigned int use_matio = 0;
   if(argc==2)
-    {
-	  dir = argv[1];
-	  printf("Using default 1 processing thread\n");
-    }
-  else if(argc == 3)
-  	{
-	  dir = argv[1];
-	  nthreads = (unsigned)atoi(argv[2]);
-    }
-  else if(argc == 4)
-  	{
-	  dir = argv[1];
-	  nthreads = (unsigned)atoi(argv[2]);
-	  use_matio = (unsigned)atoi(argv[3]);
-    }
-  else if(argc ==5)
-  {
-	  dir = argv[1];
-	  nthreads = (unsigned)atoi(argv[2]);
-	  use_matio = (unsigned)atoi(argv[3]);
-	  MAX_ITER = (unsigned)atoi(argv[4]);
-
-  }
-
-  else
-    perror("Please provide data directory");
+    dir = argv[1];
 
   /* Read in local data */
   FILE *f, *test;
@@ -118,11 +48,10 @@ int main(int argc, char **argv) {
   char s[100];
 
   /* -------------------------------------------------------
-   * Subsystem n will look for files called A.dat and b.dat
-   * and Gamma.dat in the current directory; these are its
-   * local data and do not need to be visible to any other
-   * processes.
-   * Note that m and n here refer to the dimensions of the
+   * Subsystem n will look for files called An.dat and bn.dat
+   * in the current directory; these are its local data and do 
+   * not need to be visible to any other processes. Note that
+   * m and n here refer to the dimensions of the 
    * local coefficient matrix.
    * -------------------------------------------------------*/
 
@@ -131,159 +60,159 @@ int main(int argc, char **argv) {
   gsl_matrix *A, *b;
   gsl_vector *G;
 
+  printf("Reading A, b and Gamma from %s\n", dir);
   matfp = Mat_Open(dir, MAT_ACC_RDONLY);
-  if (NULL == matfp) {
-    fprintf(stderr, "Error opening MAT file \"%s\"!\n", dir);
-    return EXIT_FAILURE;
-  }
-  matvar = Mat_VarRead(matfp, "A");
-  if(NULL == matvar) {
-    fprintf(stderr, "Error reading variable");
-    return EXIT_FAILURE;
-  } else {
-    A = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
-    m = A->size1;
-    n = A->size2;
-    memcpy(A->data, matvar->data, m*n*matvar->data_size);
-  }
-  Mat_VarFree(matvar);
+    if (NULL == matfp) {
+      fprintf(stderr, "Error opening MAT file \"%s\"!\n", dir);
+      return EXIT_FAILURE;
+    }
+    matvar = Mat_VarRead(matfp, "A");
+    if(NULL == matvar) {
+      fprintf(stderr, "Error reading variable");
+      return EXIT_FAILURE;
+    } else {
+      A = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
+      m = A->size1;
+      n = A->size2;
+      for (int i = 0; i < m*n; i++) {
+        row = i % m;
+        col = floor(i/m);
+        entry = ((double*)matvar->data)[i];
+        gsl_matrix_set(A, row, col, entry);
+      }
+    }
+    Mat_VarFree(matvar);
 
-  matvar = Mat_VarRead(matfp, "b");
-  if(NULL == matvar) {
-    fprintf(stderr, "Error reading variable");
-    return EXIT_FAILURE;
-  } else {
-    b = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
-    m = b->size1;
-    n = b->size2;
-    memcpy(b->data, matvar->data, m*n*matvar->data_size);
-  }
-  Mat_VarFree(matvar);
+    matvar = Mat_VarRead(matfp, "b");
+    if(NULL == matvar) {
+      fprintf(stderr, "Error reading variable");
+      return EXIT_FAILURE;
+    } else {
+      b = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
+      m = b->size1;
+      n = b->size2;
+      for (int i = 0; i < m*n; i++) {
+        row = i % m;
+        col = floor(i/m);
+        entry = ((double*)matvar->data)[i];
+        gsl_matrix_set(b, row, col, entry);
+      }
+    }
+    Mat_VarFree(matvar);
 
-  matvar = Mat_VarRead(matfp, "G");
-  if(NULL == matvar) {
-    fprintf(stderr, "Error reading variable");
-    return EXIT_FAILURE;
-  } else {
-    G = gsl_vector_calloc(matvar->dims[0]);
-    m = G->size;
-    memcpy(G->data, matvar->data, m*matvar->data_size);
-  }
-  Mat_VarFree(matvar);
-  Mat_Close(matfp);
+    matvar = Mat_VarRead(matfp, "G");
+    if(NULL == matvar) {
+      fprintf(stderr, "Error reading variable");
+      return EXIT_FAILURE;
+    } else {
+      G = gsl_vector_calloc(matvar->dims[0]);
+      m = G->size;
+      n = 1;
+      for (int i = 0; i < m*n; i++) {
+        entry = ((double*)matvar->data)[i];
+        gsl_vector_set(G, i, entry);
+      }
+    }
 
+    Mat_VarFree(matvar);
+    Mat_Close(matfp);
   // [m, n] = size(A);
   m = A->size1;
   n = A->size2;
+//  MPI_Barrier(MPI_COMM_WORLD);
+ 
 
-  double delta, t1=1, t2=1;
-  double lambda = 0.01;
 
-  double err1 = err(A);
+  // FISTA parameters
+  double delta;
+  double lambda = 10;
+
+  double err1 = calcErr(A);
+
   delta = 1.00/(err1*err1);
 
-
-  // Scaling Gamma
-  gsl_vector_scale(G, delta * lambda);
-
-  // Preallocating solution matrix in memory
-  gsl_matrix *X = gsl_matrix_calloc(n, b->size2);
-  gsl_matrix_set_zero(X);
-
-  printf("Running pFISTA for LASSO\n");
+  const gsl_matrix *X = gsl_matrix_calloc(n, b->size2);
 
   startTime = omp_get_wtime();
-#pragma omp parallel for schedule(static) num_threads(nthreads)
+
+#pragma omp parallel for schedule(static) num_threads(nthreads) shared(X) shared(G) shared(delta) shared(lambda)
   for(int i = 0; i < b->size2; ++i)
   {
-    /*----------------------
-     initialize local variables
-    ----------------------*/
-    gsl_vector *x      = gsl_vector_calloc(n);
-    gsl_vector *u      = gsl_vector_calloc(n);
-    gsl_vector *xold   = gsl_vector_calloc(n);
-    gsl_vector *w      = gsl_vector_calloc(n);
-    gsl_vector *Ax     = gsl_vector_calloc(m);
-    gsl_vector *bi     = gsl_vector_calloc(b->size1);
+	  // These are all variables related to FISTA
+	  gsl_vector *x      = gsl_vector_calloc(n);
+	  gsl_vector *u      = gsl_vector_calloc(n);
+	  gsl_vector *xold   = gsl_vector_calloc(n);
+	  gsl_vector *w      = gsl_vector_calloc(n);
+	  gsl_vector *Ax     = gsl_vector_calloc(m);
+	  gsl_vector *bi 	 = gsl_vector_calloc(b->size1);
 
+    /*----------------------
+     initialize variables
+    ----------------------*/
     gsl_vector_set_zero(x);
     gsl_vector_set_zero(u);
     gsl_vector_set_zero(xold);
     gsl_vector_set_zero(w);
-    gsl_vector_set_zero(Ax);
     gsl_vector_set_zero(bi);
+    gsl_vector_set_zero(Ax);
 
 
-    int err = 0;
+    double t1=1, t2=1;
     int iter = 0;
 
     gsl_matrix_get_col(bi, b, i);
+
     /* Main FISTA solver loop */
-    while (iter < MAX_ITER)
-    {
-      t1 = t2;
-      gsl_vector_memcpy(xold, x); // copy x to old x;
-      gsl_blas_dgemv(CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
+    while (iter < MAX_ITER) {
 
-      gsl_vector_sub(Ax, bi); // Ax-b
-      gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, w); // w = A' (Ax - b)
-      gsl_vector_scale(w, delta);  // w = delta * w
-      gsl_vector_sub(u, w);  // u = x - delta * A'(Ax - b)
-      gsl_vector_memcpy(x, u);
-      shrink(x, G); // shrink(x, alpha*lambda)
+    t1 = t2;
+    gsl_vector_memcpy(xold, x); // copy x to old x;
+    gsl_blas_dgemv(CblasNoTrans, 1, A, u, 0, Ax); // A_i x_i = A_i * x_i
 
-      // FISTA
-      t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
-      gsl_vector_sub(xold, x);
-      gsl_vector_scale(xold, (1 - t1)/t2);
-      gsl_vector_memcpy(u, x);
-      gsl_vector_add(u, xold);
+    gsl_vector_sub(Ax, bi);
+    gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, w); // w = A' (Ax - b)
+    gsl_vector_scale(w, delta);  // w = delta * w
+    gsl_vector_sub(u, w);  // u = x - delta * A'(Ax - b)
+    gsl_vector_memcpy(x, u); 
+    shrink(x, G, delta * lambda); // shrink(x, alpha*lambda)
+ 
+    // FISTA 
+    t2 = 0.5 + 0.5*sqrt(1+4*t1*t1);
+    gsl_vector_sub(xold, x);
+    gsl_vector_scale(xold, (1 - t1)/t2);
+    gsl_vector_memcpy(u, x);
+    gsl_vector_add(u, xold);
 
-      iter++;
+    iter++;
    }
+  
+  //Fill solution Matrix X with column solution x
+  gsl_matrix_set_col (X,i,x);
 
-    gsl_matrix_set_col (X,i,x);
+  gsl_vector_free(bi);
+  gsl_vector_free(x);
+  gsl_vector_free(w);
+  gsl_vector_free(Ax);
 
-    // Clear local memory allocations
-    gsl_vector_free(x);
-    gsl_vector_free(w);
-    gsl_vector_free(Ax);
-    gsl_vector_free(xold);
-    gsl_vector_free(u);
-    gsl_vector_free(bi);
   }
+
 
   endTime = omp_get_wtime();
   printf("Elapsed time is: %lf \n", endTime - startTime);
 
+  sprintf(s, "Results/solution.mat");
+  printf("Writing solution matrix to: %s ", s);
+  startTime = omp_get_wtime();
+  matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
+  size_t    dims[2] = {X->size2, X->size1};
+  matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
+  Mat_VarWrite(matfp, solution, MAT_COMPRESSION_NONE);
+  Mat_VarFree(solution);
+  Mat_Close(matfp);
+  endTime = omp_get_wtime();
+  printf("in %lf seconds\n", endTime - startTime);
 
-  if(use_matio)
-  {
-    sprintf(s, "Results/solution.mat");
-    printf("Writing solution matrix to: %s ", s);
-    startTime = omp_get_wtime();
-    mat_t *matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
-    size_t    dims[2] = {X->size1, X->size2};
-    matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
-    Mat_VarWrite(matfp, solution, MAT_COMPRESSION_NONE);
-    Mat_VarFree(solution);
-    Mat_Close(matfp);
-    endTime = omp_get_wtime();
-    printf("in %lf seconds\n", endTime - startTime);
-
-  }
-  else
-  {
-    sprintf(s, "Results/solution.dat");
-    printf("Writing solution matrix to: %s ", s);
-    f = fopen(s, "w");
-    startTime = omp_get_wtime();
-    gsl_matrix_fprintf(f, X, "%lf");
-    endTime = omp_get_wtime();
-    printf("in %lf seconds\n", endTime - startTime);
-    fclose(f);
-  }
-
+  
   /* Clear memory */
   gsl_matrix_free(A);
   gsl_vector_free(G);
@@ -306,18 +235,59 @@ double objective(gsl_vector *x, double lambda, gsl_vector *z) {
 }
 
 /* shrinkage function */
-void shrink(gsl_vector *x, gsl_vector *G) {
+void shrink(gsl_vector *x, gsl_vector *G, double sigma) {
   double entry;
   double Gi;
+  gsl_vector *gamma = gsl_vector_calloc(G->size);
+  gsl_vector_memcpy(gamma, G);
+  gsl_vector_scale(gamma, sigma);
 
   for (int i = 0; i < x->size; i++) {
-    Gi = gsl_vector_get(G, i);
+    Gi = gsl_vector_get(gamma, i);
     entry = gsl_vector_get(x, i);
-    if (entry < - Gi)
+    if (entry < - Gi) {
       gsl_vector_set(x, i, entry + Gi);
+    }
     else if (entry > Gi)
+    {
       gsl_vector_set(x, i, entry - Gi);
-    else
-      gsl_vector_set(x, i, 0);
+    }
   }
+  gsl_vector_free(gamma);
+}
+
+double calcErr(gsl_matrix *A)
+{
+	double m = A->size1;
+	double n = A->size2;
+	gsl_vector *x = gsl_vector_calloc(n);
+	gsl_vector *Ax = gsl_vector_calloc(m);
+
+	// approximate ||A||_2 by power method
+	double sum_x = 0, err0 = 0, err1;
+	double tol = 1e-6, normx, normy;
+	int cnt = 0;
+	for (int j = 0; j < n; j++) {
+		gsl_matrix_get_col(Ax, A, j);
+		sum_x = gsl_blas_dasum(Ax);
+		gsl_vector_set(x, j, sum_x);
+	}
+	err1 = gsl_blas_dnrm2(x);
+	gsl_vector_scale(x, 1.0 / err1);
+	while (fabs(err1 - err0) > tol * err1) {
+		err0 = err1;
+		gsl_blas_dgemv(CblasNoTrans, 1, A, x, 0, Ax); // Ax = A*x
+		gsl_blas_dgemv(CblasTrans, 1, A, Ax, 0, x);
+		normx = gsl_blas_dnrm2(x);
+		normy = gsl_blas_dnrm2(Ax);
+
+		err1 = normx / normy;
+		gsl_vector_scale(x, 1.0 / normx);
+		cnt = cnt + 1;
+		if (cnt > 100) {
+			break;
+		}
+	}
+
+	return err1;
 }
