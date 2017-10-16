@@ -31,7 +31,7 @@ double calcErr(gsl_matrix *A);
 
 int main(int argc, char **argv) {
   
-  const int MAX_ITER      = 50; // number of iteration
+  const int MAX_ITER      = 100; // number of iteration
   unsigned int nthreads = 8;
 
 //  const double TOL        = 1e-4; // tolerence
@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
 
   delta = 1.00/(err1*err1);
 
-  const gsl_matrix *X = gsl_matrix_calloc(b->size2, n);
+  const gsl_matrix *X = gsl_matrix_calloc(n, b->size2);
 
   startTime = omp_get_wtime();
 
