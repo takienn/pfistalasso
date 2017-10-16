@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
 
   delta = 1.00/(err1*err1);
 
-  const gsl_matrix *X = gsl_matrix_calloc(n, b->size2);
+  const gsl_matrix *X = gsl_matrix_calloc(b->size2, n);
 
   startTime = omp_get_wtime();
 
@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
   printf("Writing solution matrix to: %s ", s);
   startTime = omp_get_wtime();
   matfp = Mat_CreateVer(s, NULL, MAT_FT_MAT73); //or MAT_FT_MAT4 / MAT_FT_MAT73
-  size_t    dims[2] = {X->size2, X->size1};
+  size_t    dims[2] = {X->size2, X->size1}; // The X will be transposed, this is because Matlab is column-major while C is row-major
   matvar_t *solution = Mat_VarCreate("X", MAT_C_DOUBLE, MAT_T_DOUBLE, 2, dims, X->data, MAT_F_DONT_COPY_DATA);
   Mat_VarWrite(matfp, solution, MAT_COMPRESSION_NONE);
   Mat_VarFree(solution);
