@@ -31,7 +31,7 @@ double calcErr(gsl_matrix *A);
 
 int main(int argc, char **argv) {
   
-  const int MAX_ITER      = 100; // number of iteration
+  const int MAX_ITER      = 50; // number of iteration
   unsigned int nthreads = 8;
 
 //  const double TOL        = 1e-4; // tolerence
@@ -40,9 +40,10 @@ int main(int argc, char **argv) {
   char* dir; // directory of data
   if(argc==2)
     dir = argv[1];
+  if(argc == 3)
+	  nthreads = (unsigned)atoi(argv[3]);
 
   /* Read in local data */
-  FILE *f, *test;
   int m, n, row, col;
   double entry, startTime, endTime;
   char s[100];
@@ -68,7 +69,7 @@ int main(int argc, char **argv) {
     }
     matvar = Mat_VarRead(matfp, "A");
     if(NULL == matvar) {
-      fprintf(stderr, "Error reading variable");
+      fprintf(stderr, "Error reading variable A\n");
       return EXIT_FAILURE;
     } else {
       A = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
@@ -85,7 +86,7 @@ int main(int argc, char **argv) {
 
     matvar = Mat_VarRead(matfp, "b");
     if(NULL == matvar) {
-      fprintf(stderr, "Error reading variable");
+      fprintf(stderr, "Error reading variable b\n");
       return EXIT_FAILURE;
     } else {
       b = gsl_matrix_calloc(matvar->dims[0], matvar->dims[1]);
@@ -100,9 +101,9 @@ int main(int argc, char **argv) {
     }
     Mat_VarFree(matvar);
 
-    matvar = Mat_VarRead(matfp, "G");
+    matvar = Mat_VarRead(matfp, "Gamma");
     if(NULL == matvar) {
-      fprintf(stderr, "Error reading variable");
+      fprintf(stderr, "Error reading variable Gamma\n");
       return EXIT_FAILURE;
     } else {
       G = gsl_vector_calloc(matvar->dims[0]);
@@ -189,10 +190,12 @@ int main(int argc, char **argv) {
   //Fill solution Matrix X with column solution x
   gsl_matrix_set_col (X,i,x);
 
-  gsl_vector_free(bi);
   gsl_vector_free(x);
   gsl_vector_free(w);
   gsl_vector_free(Ax);
+  gsl_vector_free(bi);
+  gsl_vector_free(xold);
+  gsl_vector_free(u);
 
   }
 
@@ -252,6 +255,8 @@ void shrink(gsl_vector *x, gsl_vector *G, double sigma) {
     {
       gsl_vector_set(x, i, entry - Gi);
     }
+    else
+    	gsl_vector_set(x, i, 0);
   }
   gsl_vector_free(gamma);
 }
