@@ -5,7 +5,11 @@
 # use this if on 32-bit machine with 32-bit GSL libraries
 # ARCH=i386
 MPICC=mpicc
-MATLABHOME=/opt/MATLAB/R2017a
+ifndef MATLABHOME
+MATLABHOME=/opt/MATLAB/R2017b
+endif
+LD_LIBRARY_PATH=$(MATLABHOME)/bin/glnxa64
+
 MEX=$(MATLABHOME)/bin/glnxa64/mex
 CC=gcc
 MEXFLAGS=-fPIC -shared -Wl,--no-undefined -Wl,-rpath-link,$(MATLABHOME)/bin/glnxa64 -L$(MATLABHOME)/bin/glnxa64 -lmx -lmex -lmat -lm
