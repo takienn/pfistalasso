@@ -119,9 +119,6 @@ int pFistaLasso(gsl_matrix_float *A, gsl_matrix_float *b, gsl_vector_float *G, g
   float err1 = calcErr(A);
   delta = 1.00/(err1*err1);
 
-  // Scaling Gamma
-  gsl_vector_float_scale(G, delta * lambda);
-
   printf("Running pFISTA for LASSO\n");
 
 #pragma omp parallel for schedule(static) num_threads(nthreads) shared(X) shared(delta) shared(G) shared(lambda)
@@ -138,7 +135,7 @@ int pFistaLasso(gsl_matrix_float *A, gsl_matrix_float *b, gsl_vector_float *G, g
 	  gsl_vector_float *xold   = gsl_vector_float_calloc(n);
 	  gsl_vector_float *w      = gsl_vector_float_calloc(n);
 	  gsl_vector_float *Ax     = gsl_vector_float_calloc(m);
-	  gsl_vector_float *bi 	 = gsl_vector_float_calloc(b->size1);
+	  gsl_vector_float *bi 	   = gsl_vector_float_calloc(b->size1);
 
     /*----------------------
      initialize variables
