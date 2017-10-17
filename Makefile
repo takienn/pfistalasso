@@ -8,7 +8,7 @@ MPICC=mpicc
 MATLABHOME=/opt/MATLAB/R2017a
 MEX=$(MATLABHOME)/bin/glnxa64/mex
 CC=gcc
-MEXFLAGS=-fPIC -shared -Wl,--no-undefined -Wl,-rpath-link,/opt/MATLAB/R2017a/bin/glnxa64 -L/opt/MATLAB/R2017a/bin/glnxa64 -lmx -lmex -lmat -lm
+MEXFLAGS=-fPIC -shared -Wl,--no-undefined -Wl,-rpath-link,$(MATLABHOME)/bin/glnxa64 -L$(MATLABHOME)/bin/glnxa64 -lmx -lmex -lmat -lm
 CFLAGS=-Wall -ggdb -O0 -g3 -std=c99 -fopenmp -I/usr/include -I$(MATLABHOME)/extern/include
 LDFLAGS=-L/usr/lib/x86_64-linux-gnu -L/usr/lib -lgsl -lgslcblas -lm -lmatio -fopenmp
 
