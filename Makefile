@@ -5,15 +5,20 @@
 # use this if on 32-bit machine with 32-bit GSL libraries
 # ARCH=i386
 MPICC=mpicc
+MATLABHOME=/opt/MATLAB/R2017a
+MEX=$(MATLABHOME)/bin/glnxa64/mex
 CC=gcc
-CFLAGS=-Wall -ggdb -O0 -g3 -std=c99 -fopenmp -I/usr/include
-LDFLAGS=-L/usr/lib -lgsl -lgslcblas -lm -lmatio -fopenmp
+MEXFLAGS=-fPIC -shared -Wl,--no-undefined -Wl,-rpath-link,/opt/MATLAB/R2017a/bin/glnxa64 -L/opt/MATLAB/R2017a/bin/glnxa64 -lmx -lmex -lmat -lm
+CFLAGS=-Wall -ggdb -O0 -g3 -std=c99 -fopenmp -I/usr/include -I$(MATLABHOME)/extern/include
+LDFLAGS=-L/usr/lib/x86_64-linux-gnu -L/usr/lib -lgsl -lgslcblas -lm -lmatio -fopenmp
 
-all: pFistaLasso
+all: pFistaLasso pFistaLassoLib
 
 pFistaLasso: pFistaLasso.o mmio.o
 	$(CC) $(CFLAGS) pFistaLasso.o mmio.o -o pFistaLasso $(LDFLAGS)
-
+pFistaLassoLib:
+	$(MEX) pFistaLassoLib.c -output pFistaLasso.mexa64 CFLAGS="$(CFLAGS)" LINKLIBS="$(MEXFLAGS) $(LDFLAGS)" 
+	
 # gam: gam.o mmio.o
 #	$(MPICC) $(CFLAGS) $(LDFLAGS) gam.o mmio.o -o gam
 
@@ -24,7 +29,7 @@ mmio.o: mmio.c
 	$(CC) $(CFLAGS) -c mmio.c
 
 clean:
-	rm -vf *.o pFistaLasso 
+	rm -vf *.o pFistaLasso pFistaLasso.mexa64 
 run:
 	./pFistaLasso ./data 
 
