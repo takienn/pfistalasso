@@ -38,9 +38,9 @@ int main(int argc, char **argv) {
 //  const float lambda_tol = 1e-4; // tolerence for update lambda
 
   char* dir; // directory of data
-  if(argc==2)
+  if(argc>=2)
     dir = argv[1];
-  if(argc == 3)
+  if(argc >= 3)
 	  nthreads = (unsigned)atoi(argv[2]);
 
   printf("Running with %d threads\n", nthreads);
