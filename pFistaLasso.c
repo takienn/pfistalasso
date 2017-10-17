@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
     }
     Mat_VarFree(matvar);
 
-    matvar = Mat_VarRead(matfp, "Gamma");
+    matvar = Mat_VarRead(matfp, "G");
     if(NULL == matvar) {
       fprintf(stderr, "Error reading variable Gamma\n");
       return EXIT_FAILURE;
