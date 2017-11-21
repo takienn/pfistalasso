@@ -1,4 +1,18 @@
 /* -------------------------------------------------------
+ * An earlier implementation by Zhimin Pen used openMPI 
+ * to distribute processing on an already prepared set of 
+ * input matrices for each process, then the results are 
+ * combined for final results.
+ * In this implementation, we use openMP, thus, we use multhreading,
+ * that serves our purpuses for working in a multicore environments
+ * instead of a distributed network environment, also openmp is MATLAB
+ * friendly, which allowes us to implement the code as a mex function.
+ * The parallelisation algorithm is also modified to operated on b columns,
+ * while the Zhimin Pen version, assumes a vector b and operations on segmented
+ * A and b from a preprocessing step.
+ * Basically, this implementation has a minimal similitary to Zhimin Pen's
+ * code, and re-implements Fista in a completely different parallelisation
+ * scheme.
  * Author:   Wenqian Liu
  * Date:     10/17/2017
  *--------------------------------------------------------*/
