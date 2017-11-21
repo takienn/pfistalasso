@@ -1,22 +1,11 @@
 /* -------------------------------------------------------
- * Solve a distributed lasso problem, i.e.,
- *
- *   minimize \lambda * ||x||_1 + 0.5 * ||Ax - b||_2^2
- *
- * The implementation uses MPI for distributed communication
- * and the GNU Scientific Library (GSL) for math.
- * Compile: make
- * run code: mpiexec -n 1 ./IST data_directory
- *
- * Author:   Zhimin Peng
- * Date:     01/11/2013
- * Modified: 02/06/2013
+ * Author:   Wenqian Liu
+ * Date:     10/17/2017
  *--------------------------------------------------------*/
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "mmio.h"
 #include <omp.h>
 #include <gsl/gsl_vector_float.h>
 #include <gsl/gsl_matrix_float.h>
